@@ -1,12 +1,20 @@
 import { readdirSync } from 'node:fs';
 import type { RigConfig } from './config.js';
+import { readNight } from './digest/types.js';
 import { lastBeat, type Beat } from './heartbeat.js';
+
+export type NightSummary = {
+  night: string;
+  ok: number;
+  retry: number;
+  fail: number;
+};
 
 export type Status = {
   adapter: string;
   installed: string;
   lastBeat: Beat | null;
-  nights: string[];
+  nights: NightSummary[];
 };
 
 // Nights on disk = runs/<YYYY-MM-DD>.jsonl, newest first.
@@ -22,11 +30,24 @@ export function nightsOnDisk(runsDir: string): string[] {
   }
 }
 
+function summarizeNight(runsDir: string, night: string): NightSummary {
+  const rows = readNight(runsDir, night);
+  return rows.reduce(
+    (acc, r) => {
+      if (r.lastStatus === 'ok') acc.ok += 1;
+      else if (r.lastStatus === 'retry') acc.retry += 1;
+      else acc.fail += 1;
+      return acc;
+    },
+    { night, ok: 0, retry: 0, fail: 0 },
+  );
+}
+
 export function readStatus(config: RigConfig): Status {
   return {
     adapter: config.adapter,
     installed: config.installed,
     lastBeat: lastBeat(),
-    nights: nightsOnDisk(config.runsDir),
+    nights: nightsOnDisk(config.runsDir).map((night) => summarizeNight(config.runsDir, night)),
   };
 }
